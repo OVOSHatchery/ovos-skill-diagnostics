@@ -19,9 +19,9 @@
 from os.path import dirname, exists, isfile, expanduser
 from os import access, X_OK
 
-from adapt.intent import IntentBuilder
-from mycroft.skills.core import MycroftSkill
-from mycroft.util.log import getLogger
+from ovos_workshop.intents import IntentBuilder
+from ovos_workshop.skills import OVOSSkill
+from ovos_utils.log import getLogger
 import psutil
 import subprocess
 import json
@@ -40,14 +40,15 @@ def and_(strings):
     if len(strings) <= 1:
         return " ".join(strings)
 
-    return "%s and %s" % (", ".join(strings[0:-1]),
-                          strings[-1])
+    return "%s and %s" % (", ".join(strings[0:-1]), strings[-1])
 
 
 def sizeof_fmt(num, suffix='Bytes'):
     # Attribution: http://stackoverflow.com/a/1094933/2444609
-    for unit in ['Bytes', 'Kilo bytes', 'Megs', 'Gig', 'Tera bytes',
-                 'Peta bytes', 'Exa bytes', 'Yotta bytes']:
+    for unit in [
+            'Bytes', 'Kilo bytes', 'Megs', 'Gig', 'Tera bytes', 'Peta bytes',
+            'Exa bytes', 'Yotta bytes'
+    ]:
         if abs(num) < 1024.0:
             return "%3.1f %s" % (num, unit)
         num /= 1024.0
@@ -60,10 +61,10 @@ def is_exe(fpath):
     return isfile(fpath) and access(fpath, X_OK)
 
 
-class DiagnosticsSkill(MycroftSkill):
+class DiagnosticsSkill(OVOSSkill):
 
-    def __init__(self):
-        super(DiagnosticsSkill, self).__init__(name="DiagnosticsSkill")
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.public_ip = None
         self.public_ip_expire = 0
         self.diagnostic_script = None
@@ -71,7 +72,6 @@ class DiagnosticsSkill(MycroftSkill):
             self.diagnostic_script = self.config.get('script')
 
     def initialize(self):
-        self.load_data_files(dirname(__file__))
 
         cpu_intent = IntentBuilder("CpuIntent")\
             .require("CpuKeyword")\
@@ -100,22 +100,22 @@ class DiagnosticsSkill(MycroftSkill):
         self.register_intent(custom_intent, self.handle_custom_intent)
 
     def handle_cpu_intent(self, message):
-        data = {
-            "percent": psutil.cpu_percent(interval=1)
-        }
+        data = {"percent": psutil.cpu_percent(interval=1)}
         self.speak_dialog("cpu", data)
         self.speak_dialog("WorkingHardOn")
-        output = subprocess.check_output("ps -eo pcpu,comm --no-headers|"
-                                         "sort -t. -nk1,2 -k4,4 -r |"
-                                         "head -n 4 |"
-                                         "awk '{print $2}'", shell=True)
+        output = subprocess.check_output(
+            "ps -eo pcpu,comm --no-headers|"
+            "sort -t. -nk1,2 -k4,4 -r |"
+            "head -n 4 |"
+            "awk '{print $2}'",
+            shell=True)
         output = output.strip()
         self.speak(and_(output.split("\n")))
 
     def handle_drive_intent(self, message):
         partitions = psutil.disk_partitions()
         for partition in partitions:
-            print("partition.mountpoint: %s" % partition.mountpoint)
+            print(("partition.mountpoint: %s" % partition.mountpoint))
             if partition.mountpoint.startswith("/snap/"):
                 continue
             partition_data = psutil.disk_usage(partition.mountpoint)
@@ -138,13 +138,10 @@ class DiagnosticsSkill(MycroftSkill):
         ips = ips.strip()
         ips = ips.split(" ")
 
-        public_json = subprocess.check_output([
-            "wget", "-qO-",
-            "https://api.ipify.org/?format=json"])
+        public_json = subprocess.check_output(
+            ["wget", "-qO-", "https://api.ipify.org/?format=json"])
 
-        public_ip = {
-            "ip": "undetermined"
-        }
+        public_ip = {"ip": "undetermined"}
         try:
             if self.public_ip is None or time() > self.public_ip_expire:
                 public_ip = json.loads(public_json)
@@ -160,9 +157,7 @@ class DiagnosticsSkill(MycroftSkill):
 
     def handle_updtime_intent(self, message):
         uptime = subprocess.check_output(['uptime', '-p'])
-        data = {
-            'uptime': uptime.strip()
-        }
+        data = {'uptime': uptime.strip()}
         self.speak_dialog("uptime", data)
 
     def handle_custom_intent(self, message):
@@ -173,17 +168,12 @@ class DiagnosticsSkill(MycroftSkill):
             return
 
         if not exists(script):
-            data = {
-                "script": script
-            }
+            data = {"script": script}
             self.speak_dialog("missing.script", data)
             return
 
-
         if not is_exe(script):
-            data = {
-                "script": script
-            }
+            data = {"script": script}
             self.speak_dialog("not.executable.script", data)
             return
 
@@ -194,7 +184,3 @@ class DiagnosticsSkill(MycroftSkill):
 
     def stop(self):
         pass
-
-
-def create_skill():
-    return DiagnosticsSkill()
